@@ -1,0 +1,10 @@
+{
+  "browser": "chromium",
+  "headless": true,
+  "viewport": { "width": 1920, "height": 1080 },
+  "timeouts": { "action": 10000, "navigation": 30000, "expect": 5000 },
+  "retries": 1,
+  "video": "retain-on-failure",
+  "screenshot": "only-on-failure",
+  "trace": "retain-on-failure"
+}
