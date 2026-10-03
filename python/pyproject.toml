@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "playwright-automation-python"
+version = "0.1.0"
+description = "Python stack of the multi-language Playwright framework"
+requires-python = ">=3.11"
+dependencies = [
+  "pytest",
+  "pytest-playwright",
+  "pytest-xdist",
+  "pytest-rerunfailures",
+  "allure-pytest",
+  "pydantic>=2",
+  "python-dotenv",
+  "jsonschema",
+  "pyyaml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/automation"]
