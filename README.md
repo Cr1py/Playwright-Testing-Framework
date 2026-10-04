@@ -1,35 +1,52 @@
 # Playwright Test Automation Architecture
 
-A test automation architecture for web applications with a **React + TypeScript frontend** and a backend written in **Java**, **Python**, or **TypeScript**. It tests the UI through the browser and the backend through its HTTP API, using [Playwright](https://playwright.dev/). One framework serves multiple projects, selected with `PROJECT=<name>`.
- 
-The test code itself can be written in Java, Python, or TypeScript. All three stacks share one configuration contract, one set of test data, and one combined Allure report, and they follow the same internal layering so a tester who knows one stack can navigate the others. The backend's language doesn't dictate the test language.
+A test automation architecture for web applications with a **React + TypeScript frontend** and a backend written in **Java**, **Python**, or **TypeScript**. It tests the UI through the browser and the backend through its HTTP API, using [Playwright](https://playwright.dev/). All three stacks share one configuration contract, one set of test data, and one combined Allure report, and they follow the same internal layering so a tester who knows one stack can navigate the others. It serves multiple projects, selected with `PROJECT=<name>`, and the test code can be written in Java, Python, or TypeScript (backend language doesn't dictate the test language). 
 
 ---
 
 ## Table of Contents
- 
+
 1. [Features](#features)
-2. [Systems Under Test](#systems-under-test)
-3. [Languages and Frameworks](#languages-and-frameworks)
-4. [Design Principles](#design-principles)
-5. [Repository Structure](#repository-structure)
-6. [Multi-Project Support](#multi-project-support)
-7. [Architecture Layers](#architecture-layers)
-8. [Stack Details](#stack-details)
-   - [Java](#java-junit-5--gradle)
-   - [Python](#python-pytest)
-   - [TypeScript](#typescript-playwright-test)
-9. [Shared Configuration](#shared-configuration)
-10. [Data-Driven Testing](#data-driven-testing)
-11. [API Testing](#api-testing)
-12. [Failure Capture](#failure-capture-screenshots-video-traces)
-13. [Parallel Execution](#parallel-execution)
-14. [Reporting](#reporting)
-15. [AI-Assisted Workflows](#ai-assisted-workflows)
-16. [Coding Conventions](#coding-conventions)
-17. [Getting Started](#getting-started)
-18. [CI/CD](#cicd)
-19. [Build Order / Roadmap](#build-order--roadmap)
+2. [Getting Started](#getting-started)
+   * [Prerequisites](#prerequisites)
+   * [Setup](#setup)
+   * [Running Tests](#running-tests)
+3. [System Design](#system-design)
+   * [Frontend: React + TypeScript](#frontend-react--typescript)
+   * [Backends: Java, Python, TypeScript](#backends-java-python-typescript)
+   * [What the Backend Language Does and Does Not Affect](#what-the-backend-language-does-and-does-not-affect)
+4. [Languages and Frameworks](#languages-and-frameworks)
+5. [Design Principles](#design-principles)
+6. [Project Structure](#project-structure)
+7. [Multi-Project Support](#multi-project-support)
+   * [Per-Project Configuration](#per-project-configuration)
+   * [Layout Inside Each Stack](#layout-inside-each-stack)
+   * [Adding a New Project](#adding-a-new-project)
+8. [Architecture Layers](#architecture-layers)
+9. [Stack Details](#stack-details)
+   * [Java (JUnit 5 + Gradle)](#java-junit-5--gradle)
+   * [Python (pytest)](#python-pytest)
+   * [TypeScript (Playwright Test)](#typescript-playwright-test)
+10. [Shared Configuration](#shared-configuration)
+11. [Data-Driven Testing](#data-driven-testing)
+12. [API Testing](#api-testing)
+    * [Scope](#scope)
+    * [The API Layer](#the-api-layer)
+    * [Configuration](#configuration)
+    * [Contracts](#contracts)
+    * [Authentication and Test Data](#authentication-and-test-data)
+    * [Test Layers and Selection](#test-layers-and-selection)
+    * [Examples](#examples)
+    * [Backend Validation](#backend-validation)
+    * [API Reporting](#api-reporting)
+13. [Failure Capture (Screenshots, Video, Traces)](#failure-capture-screenshots-video-traces)
+14. [Parallel Execution](#parallel-execution)
+15. [Reporting](#reporting)
+16. [AI-Assisted Workflows](#ai-assisted-workflows)
+    * [Failure Summarization](#failure-summarization)
+    * [AI Coding Assistance](#ai-coding-assistance)
+17. [Coding Conventions](#coding-conventions)
+
 ---
  
 ## Features
@@ -45,6 +62,62 @@ The test code itself can be written in Java, Python, or TypeScript. All three st
 - **Detailed reporting:** per-stack results are merged into a single Allure report.
 - **Parallel execution:** native parallelism in each stack (JUnit 5 parallel, pytest-xdist, Playwright workers).
 - **AI-assisted:** `llm-cli` summarizes failures after each CI run, and shared context files guide AI coding tools (Claude Code, Copilot, etc.).
+---
+
+## Getting Started
+ 
+### Prerequisites
+ 
+- Java 17+, Gradle (wrapper included)
+- Python 3.11+ and `uv` or `pip`
+- Node.js 20+
+- `jq`, `make`, [Allure CLI](https://allurereport.org/docs/install/)
+- Optional: [`llm`](https://llm.datasette.io/) CLI for AI summaries
+### Setup
+ 
+```bash
+git clone <repo-url> && cd playwright-automation
+cp .env.example .env
+ 
+# TypeScript
+cd typescript && npm ci && npx playwright install --with-deps && cd ..
+ 
+# Python
+cd python && uv sync && uv run playwright install --with-deps && cd ..
+ 
+# Java
+cd java && ./gradlew build -x test && cd ..
+```
+ 
+### Running tests
+ 
+```bash
+make test-ts        # TypeScript
+make test-python    # Python
+make test-java      # Java
+make test-all       # all three stacks, all layers
+make test-api       # API tests only, all stacks (fast, no browser)
+make test-ui        # UI tests only
+make test-e2e       # cross-layer tests only
+ 
+PROJECT=project-a make test-api            # choose the application under test
+PROJECT=project-b ENV=staging make test-all  # choose project and environment
+make report                   # merge results, build and open Allure report
+make summarize                # AI failure summary -> reports/summary.md
+```
+ 
+Per-stack commands, if you prefer them directly:
+ 
+```bash
+cd typescript && PROJECT=project-a npx playwright test
+cd python && PROJECT=project-a uv run pytest
+cd java && PROJECT=project-a ./gradlew test
+ 
+# API tests only (prefix each with PROJECT=<name>)
+cd typescript && npx playwright test --project=api
+cd python && uv run pytest -m api
+cd java && ./gradlew test -PincludeTags=api
+```
 ---
  
 ## System Design
@@ -116,16 +189,14 @@ These are the languages of the **test code**. The backend under test can be writ
 | Contract validation | `swagger-request-validator` | `openapi-core` (+ `schemathesis` optional) | `ajv` / `openapi-response-validator` |
  
 Shared tooling: [Allure Report](https://allurereport.org/), [`llm`](https://llm.datasette.io/) CLI (or equivalent) for AI summaries, `jq` for result processing, GNU Make for unified commands.
- 
-> **Note on Jest:** for TypeScript we recommend `@playwright/test` over Jest. It ships with parallelism, fixtures, tracing, video, screenshot-on-failure, and an Allure reporter. `jest-playwright` is poorly maintained and those features would need to be rebuilt by hand. If Jest is a hard requirement, the layering below still applies.
- 
+
 ---
  
 ## Design Principles
  
 1. **Monorepo with one folder per language.** Each stack keeps its native tooling and does not fight the others.
 2. **Shared assets at the root.** Test data, environment config, and report tooling are language-neutral. All stacks read the same CSV/JSON files and write the same `allure-results` format.
-3. **Identical layering in every language.** Config → core → components → pages → tests.
+3. **Identical layering in every language.** Config -> core -> components -> pages -> tests.
 4. **Use what the framework already gives you.** `pytest-playwright` and Playwright Test already provide browser fixtures, video, and screenshots, so we configure them rather than rebuild them.
 5. **No secrets in the repo.** Credentials come from `.env` locally and CI secrets in pipelines.
 6. **API contracts are the shared source of truth.** One OpenAPI spec per project is validated by all three stacks, so a backend in any language is checked against the same definition of correct.
@@ -133,7 +204,7 @@ Shared tooling: [Allure Report](https://allurereport.org/), [`llm`](https://llm.
 8. **Test the system, not the implementation.** Tests interact through the browser and HTTP only, so backend rewrites in another language do not break them.
 ---
  
-## Repository Structure
+## Project Structure
  
 ```
 playwright-automation/
@@ -292,15 +363,15 @@ Java and Python follow the same pattern with language-appropriate names and sele
 Every stack implements the same five layers. Dependencies only point downward.
  
 ```
-tests (ui | api | e2e)  ← assertions and scenarios; data-driven
+tests (ui | api | e2e)       <- assertions and scenarios: data-driven
   │
-  ├── pages ──► components   ← UI: one class per screen, built from reusable fragments
+  ├── pages -> components    <- UI: one class per screen, built from reusable fragments
   │
-  └── api clients            ← API: one class per resource, typed requests/responses
+  └── api clients            <- API: one class per resource, typed requests/responses
   │
-core           ← browser lifecycle, BasePage, BaseApiClient (auth, headers, logging)
+core                         <- browser lifecycle, BasePage, BaseApiClient (auth, headers, logging)
   │
-config + data  ← environment settings, CSV/JSON readers, typed models, OpenAPI contracts
+config + data                <- environment settings, CSV/JSON readers, typed models, OpenAPI contracts
 ```
  
 | Layer | Responsibility |
@@ -324,7 +395,7 @@ java/
 ├── settings.gradle.kts
 ├── gradle.properties
 └── src/
-    ├── main/java/com/yourorg/automation/
+    ├── main/java/automation/
     │   ├── config/
     │   │   ├── Config.java              # loads shared/config/*.json by ENV
     │   │   └── ConfigLoader.java
@@ -653,8 +724,8 @@ Prefer validating through the API. Use direct database access only for things th
 - Keep it in a separate `backend/` module with **read-only** credentials, against dev or staging only.
 - Centralize SQL in one place so schema changes do not ripple through tests.
 - Select the driver per project through config, since backends may use different databases.
-### Reporting
- 
+
+### API Reporting
 - Every API call is attached to the Allure result (method, URL, status, headers, body).
 - Redact `Authorization` headers, tokens, and passwords before attaching.
 - Label results with `layer` (`ui`, `api`, `e2e`) so the combined report can be filtered.
@@ -732,106 +803,19 @@ Run it as the last step of `report.yml` and post `reports/summary.md`.
  
 These are enforced in review and stated in `ai/context/ARCHITECTURE.md`:
  
-1. **Pages never contain assertions.** Tests assert; pages expose state.
-2. **Locator priority:** `getByRole` → `getByLabel` / `getByText` → `data-testid` → CSS (last resort). Avoid XPath.
-3. **Components are reused**, never duplicated across pages.
-4. **All test data comes from `shared/test-data/`.** No hardcoded credentials or inline datasets.
-5. **No fixed sleeps.** Rely on Playwright auto-waiting and web-first assertions.
-6. **Mirror existing naming** per language (`LoginPage.java`, `login_page.py`, `LoginPage.ts`).
-7. **One browser context per test** for isolation.
-8. **Keep logic out of tests.** Anything reusable moves into a page, component, or util.
-9. **API clients never assert.** They return typed responses; tests assert.
-10. **Validate against the contract.** API tests check at least status and body schema against `shared/contracts/`.
-11. **Set up data through the API, not the UI.** Reserve the UI for the behavior under test.
-12. **Unique data per test.** Parallel workers must never share or collide on records.
-13. **Never log secrets.** Redact tokens and credentials from Allure attachments and console output.
-14. **Project code stays in its project folder.** Anything reused by two or more projects moves to `common/`. Tests never branch on the project name.
+1. **Pages never contain assertions:** Tests assert; pages expose state.
+2. **Locator priority:** `getByRole` -> `getByLabel` / `getByText` -> `data-testid` -> CSS (last resort). Avoid XPath.
+3. **Components are reused:** never duplicated across pages.
+4. **All test data comes from `shared/test-data/`:** No hardcoded credentials or inline datasets.
+5. **No fixed sleeps:** Rely on Playwright auto-waiting and web-first assertions.
+6. **Mirror existing naming:** per language (`LoginPage.java`, `login_page.py`, `LoginPage.ts`).
+7. **One browser context per test:** for isolation.
+8. **Keep logic out of tests:** Anything reusable moves into a page, component, or util.
+9. **API clients never assert:** They return typed responses; tests assert.
+10. **Validate against the contract:** API tests check at least status and body schema against `shared/contracts/`.
+11. **Set up data through the API, not the UI:** Reserve the UI for the behavior under test.
+12. **Unique data per test:** Parallel workers must never share or collide on records.
+13. **Never log secrets:** Redact tokens and credentials from Allure attachments and console output.
+14. **Project code stays in its project folder:** Anything reused by two or more projects moves to `common/`. Tests never branch on the project name.
 ---
  
-## Getting Started
- 
-### Prerequisites
- 
-- Java 17+, Gradle (wrapper included)
-- Python 3.11+ and `uv` or `pip`
-- Node.js 20+
-- `jq`, `make`, [Allure CLI](https://allurereport.org/docs/install/)
-- Optional: [`llm`](https://llm.datasette.io/) CLI for AI summaries
-### Setup
- 
-```bash
-git clone <repo-url> && cd playwright-automation
-cp .env.example .env
- 
-# TypeScript
-cd typescript && npm ci && npx playwright install --with-deps && cd ..
- 
-# Python
-cd python && uv sync && uv run playwright install --with-deps && cd ..
- 
-# Java
-cd java && ./gradlew build -x test && cd ..
-```
- 
-### Running tests
- 
-```bash
-make test-ts        # TypeScript
-make test-python    # Python
-make test-java      # Java
-make test-all       # all three stacks, all layers
-make test-api       # API tests only, all stacks (fast, no browser)
-make test-ui        # UI tests only
-make test-e2e       # cross-layer tests only
- 
-PROJECT=project-a make test-api            # choose the application under test
-PROJECT=project-b ENV=staging make test-all  # choose project and environment
-make report                   # merge results, build and open Allure report
-make summarize                # AI failure summary -> reports/summary.md
-```
- 
-Per-stack commands, if you prefer them directly:
- 
-```bash
-cd typescript && PROJECT=project-a npx playwright test
-cd python && PROJECT=project-a uv run pytest
-cd java && PROJECT=project-a ./gradlew test
- 
-# API tests only (prefix each with PROJECT=<name>)
-cd typescript && npx playwright test --project=api
-cd python && uv run pytest -m api
-cd java && ./gradlew test -PincludeTags=api
-```
- 
----
- 
-## CI/CD
- 
-| Workflow | Purpose |
-|---|---|
-| `java.yml` | Build and test the Java stack; upload `allure-results` as an artifact. |
-| `python.yml` | Install deps and browsers, run pytest; upload `allure-results`. |
-| `typescript.yml` | Install deps and browsers, run Playwright Test; upload `allure-results`. |
-| `report.yml` | Download all artifacts, merge results, generate and publish the Allure report, run the AI summary, post to the PR or Slack. |
- 
-Guidelines:
- 
-- Run the three stack workflows in parallel, then `report.yml` with `needs:` on all three and `if: always()` so reports are produced even when tests fail.
-- Use a matrix over project and layer so each application is tested independently: `matrix: { project: [project-a, project-b, project-c], layer: [api, ui, e2e] }`. Use path filters so a change under `shared/config/projects/<project>/` or that project's folders only triggers that project.
-- Run `api` tests first as a fast gate, then `ui` and `e2e`. Skip browser installation in jobs that only run API tests.
-- Cache Gradle, npm, pip, and Playwright browser downloads.
-- Store credentials and LLM API keys as CI secrets.
----
- 
-## Build Order / Roadmap
- 
-1. **Shared foundation:** `shared/config` with the per-project structure, `shared/test-data`, `shared/contracts`, and the Makefile.
-2. **TypeScript first, with one pilot project.** Least boilerplate, so it is the fastest way to prove the layering with a login test.
-3. **Port to Python**, then **Java**, keeping the same structure and names.
-4. **API layer in TypeScript:** `BaseApiClient`, one resource client, `ContractValidator`, one API test, then one cross-layer E2E test.
-5. **Port the API layer** to Python, then Java.
-6. **Allure merging** across all three stacks, with `layer` labels.
-7. **CI workflows,** with API tests as the first gate.
-8. **AI summary step** and the `ai/` prompts and context files.
-9. **Hardening:** flaky-test triage, data schema validation, Schemathesis fuzzing, additional components and pages.
-10. **Onboard the remaining projects** using the [project checklist](#adding-a-new-project).
