@@ -8,7 +8,7 @@ import automation.core.PlaywrightManager;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** one token per project/environment for the whole run, shared by all test threads */
+/* one token per project/environment for the whole run, shared by all test threads */
 public final class AuthTokens {
     private static final Map<String, String> CACHE = new ConcurrentHashMap<>();
 
